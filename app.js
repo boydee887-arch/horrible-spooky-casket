@@ -58,3 +58,4 @@ function formatBytes(n){if(n===0)return"0 Bytes";const u=["Bytes","KB","MB","GB"
 async function customerLogout(){try{await api("/api/customer/logout",{method:"POST"})}finally{home()}}
 function copyText(s){navigator.clipboard?.writeText(s).then(()=>alert("คัดลอกแล้ว")).catch(()=>alert("ไม่สามารถคัดลอกได้"))}
 (async()=>{try{const a=await api("/api/admin/me");if(a.mustChange)return changePassword(true);return adminDashboard()}catch{}try{await api("/api/customer/session");return scanner()}catch{}home()})();
+                                                                                  
