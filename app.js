@@ -1,61 +1,873 @@
-const app=document.getElementById("app");
-const durations=["3 ชั่วโมง","6 ชั่วโมง","1 วัน","7 วัน","30 วัน","90 วัน","180 วัน","Lifetime"];
-const checks=[
- ["Root Status","เบราว์เซอร์ทั่วไปอ่านสถานะ Root ของ Android ไม่ได้","NOT AVAILABLE","unknown"],
- ["VPN Status","ไม่สามารถอ่านสถานะ VPN ระดับระบบจากหน้าเว็บได้","NOT AVAILABLE","unknown"],
- ["Shizuku Status","ไม่สามารถตรวจบริการ Shizuku ที่ทำงานในระบบได้","NOT AVAILABLE","unknown"],
- ["Installed Apps","เว็บไม่สามารถดึงรายชื่อแอปที่ติดตั้งทั้งหมดได้","NOT AVAILABLE","unknown"],
- ["App Permissions","เว็บไม่สามารถอ่านสิทธิ์ของแอปอื่นได้","NOT AVAILABLE","unknown"],
- ["Downloaded Files","ตรวจเฉพาะไฟล์ที่ผู้ใช้เลือกให้เว็บอ่านได้","UNKNOWN","unknown"],
- ["APK Scanner","อ่านไฟล์ที่เลือกและคำนวณ SHA-256 ได้ แต่ไม่ใช่การวิเคราะห์มัลแวร์เต็มรูปแบบ","UNKNOWN","unknown"],
- ["ZIP Scanner","อ่านไฟล์ที่เลือกและคำนวณ SHA-256 ได้; ไม่รับประกันการตรวจทุกเนื้อหา","UNKNOWN","unknown"],
- ["Free Fire Related Files","ไม่สามารถสแกนพื้นที่ส่วนตัวของเกมหรือโฟลเดอร์ระบบได้","NOT AVAILABLE","unknown"],
- ["Device Security","ตรวจสอบได้เพียงข้อมูลที่ browser เปิดเผย","UNKNOWN","unknown"]
+
+"use strict";
+
+/* =========================================================
+   FF SCAN CENTER
+   Frontend: Thai UI
+   Customer: Check key -> Confirm activation
+   ========================================================= */
+
+const app = document.getElementById("app");
+const SELLER_URL = ""; // ใส่ลิงก์ร้านค้าภายหลัง
+
+const DEVICE_STORAGE_KEY = "ffsc-device-id";
+
+const durations = [
+  { value: "3h", label: "3 ชั่วโมง" },
+  { value: "6h", label: "6 ชั่วโมง" },
+  { value: "1d", label: "1 วัน" },
+  { value: "7d", label: "7 วัน" },
+  { value: "30d", label: "30 วัน" },
+  { value: "90d", label: "90 วัน" },
+  { value: "180d", label: "180 วัน" },
+  { value: "lifetime", label: "ตลอดชีพ" }
 ];
-let currentFile=null, lastScan=null;
-const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-async function api(url,opts={}){const r=await fetch(url,{credentials:"same-origin",headers:{"Content-Type":"application/json",...(opts.headers||{})},...opts});let d={};try{d=await r.json()}catch{}if(!r.ok)throw Error(d.error||"Request failed");return d}
-function showError(e){return `<div class="notice error">${esc(e.message)}</div>`}
-function home(){app.innerHTML=`
-<section class="hero"><div class="eyebrow">ANDROID SECURITY • FILE INSPECTION</div><h1>FF SCAN CENTER</h1><p>ANDROID SECURITY CHECKER<br>ระบบตรวจสอบไฟล์และข้อมูลความปลอดภัยเบื้องต้นของอุปกรณ์ Android</p></section>
-<div class="grid">
- <section class="card access-card"><div><div class="iconbox">⬡</div><h2>ADMIN LOGIN</h2><p class="muted">พื้นที่เจ้าของระบบสำหรับสร้างและจัดการ License Key</p></div><button class="btn full" onclick="adminLogin()">OWNER ACCESS ↗</button></section>
- <section class="card access-card"><div><div class="iconbox">⌁</div><h2>CUSTOMER ACCESS</h2><p class="muted">กรอก License Key เพื่อเปิดใช้งาน Scanner</p></div><button class="btn full secondary" onclick="customerLogin()">ACTIVATE LICENSE ↗</button></section>
-</div><div class="notice">การตรวจสอบทำงานภายใต้ข้อจำกัดของ Chrome และ Android Browser ระบบจะไม่อ้างว่าปลอดภัย 100% และจะไม่ส่งไฟล์ขึ้นเซิร์ฟเวอร์</div>`}
-function adminLogin(){app.innerHTML=`<section class="card formcard"><button class="back" onclick="home()">← กลับหน้าหลัก</button><h2 style="margin-top:22px">ADMIN LOGIN</h2><p class="muted">สำหรับเจ้าของ FF SCAN CENTER เท่านั้น</p><form id="loginForm"><label class="field"><span>ADMIN PASSWORD</span><input id="adminPass" type="password" autocomplete="current-password" required></label><button class="btn full">AUTHENTICATE</button></form><div id="msg"></div></section>`;
-document.getElementById("loginForm").onsubmit=async e=>{e.preventDefault();try{const d=await api("/api/admin/login",{method:"POST",body:JSON.stringify({password:document.getElementById("adminPass").value})});d.mustChange?changePassword(true):adminDashboard()}catch(err){document.getElementById("msg").innerHTML=showError(err)}}}
-function changePassword(force=false){app.innerHTML=`<section class="card formcard"><h2>เปลี่ยนรหัสผ่าน Admin</h2><p class="muted">${force?"เพื่อความปลอดภัย กรุณาเปลี่ยนรหัสเริ่มต้นก่อนใช้งาน":"กำหนดรหัสผ่านใหม่ของเจ้าของระบบ"}</p><form id="changeForm"><label class="field"><span>รหัสผ่านปัจจุบัน</span><input id="oldPass" type="password" required></label><label class="field"><span>รหัสผ่านใหม่ (อย่างน้อย 12 ตัวอักษร)</span><input id="newPass" type="password" minlength="12" required></label><button class="btn full">UPDATE PASSWORD</button></form><div id="msg"></div></section>`;
-document.getElementById("changeForm").onsubmit=async e=>{e.preventDefault();try{await api("/api/admin/change-password",{method:"POST",body:JSON.stringify({currentPassword:oldPass.value,newPassword:newPass.value})});adminDashboard()}catch(err){msg.innerHTML=showError(err)}}}
-async function adminDashboard(){try{const [me,data,audit]=await Promise.all([api("/api/admin/me"),api("/api/admin/licenses"),api("/api/admin/audit")]);if(me.mustChange)return changePassword(true);renderAdmin(data.licenses,audit.events)}catch(e){adminLogin()}}
-function renderAdmin(licenses,events){app.innerHTML=`<div class="dashboard-head"><div><div class="eyebrow">OWNER CONSOLE</div><h1>Admin Dashboard</h1><div class="muted">จัดการ License และประวัติการใช้งาน</div></div><button class="btn secondary small" onclick="adminLogout()">LOG OUT</button></div>
-<div class="stats"><div class="stat"><strong>${licenses.length}</strong><span>LICENSES</span></div><div class="stat"><strong>${licenses.filter(x=>x.status==="ACTIVE").length}</strong><span>ACTIVE</span></div><div class="stat"><strong>${licenses.filter(x=>x.status==="SUSPENDED").length}</strong><span>SUSPENDED</span></div></div>
-<section class="card"><h2>สร้าง License Key</h2><div class="row"><label class="field" style="flex:1;margin:0"><span>ระยะเวลาใช้งาน</span><select id="duration">${durations.map(x=>`<option>${x}</option>`).join("")}</select></label><button class="btn" onclick="createLicense()">GENERATE KEY</button></div><div id="createdKey"></div></section>
-<section class="card" style="margin-top:16px"><div class="row between"><h2>License Management</h2><button class="btn secondary small" onclick="changePassword()">เปลี่ยนรหัสผ่าน</button></div><label class="field"><span>ค้นหาด้วยท้ายคีย์หรือ ID</span><input id="searchKey" placeholder="ค้นหา License..." oninput="searchLicenses()"></label><div class="tablewrap"><table><thead><tr><th>ID / KEY HINT</th><th>DURATION</th><th>EXPIRES</th><th>STATUS</th><th>DEVICE</th><th>ACTIONS</th></tr></thead><tbody id="licenseRows">${licenseRows(licenses)}</tbody></table></div></section>
-<section class="card" style="margin-top:16px"><h2>Activity History</h2><div class="tablewrap"><table><thead><tr><th>EVENT</th><th>LICENSE</th><th>DETAIL</th><th>TIME</th></tr></thead><tbody>${events.map(x=>`<tr><td>${esc(x.action)}</td><td>${esc(x.key_hint||x.license_id||"—")}</td><td>${esc(x.detail||"—")}</td><td>${fmt(x.created_at)}</td></tr>`).join("")||"<tr><td colspan=4>ยังไม่มีประวัติ</td></tr>"}</tbody></table></div></section>`;
+
+let currentPage = "home";
+let customerKey = "";
+let checkedLicense = null;
+let adminData = null;
+let licenseRows = [];
+let auditRows = [];
+let searchTimer = null;
+
+/* =========================
+   UTILITIES
+   ========================= */
+
+function escapeHTML(value) {
+  return String(value ?? "").replace(/[&<>"']/g, char => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[char]));
 }
-function fmt(v){return v?new Date(v).toLocaleString("th-TH"):"Lifetime"}
-function licenseRows(rows){return rows.map(x=>`<tr><td>#${x.id}<br><small>••••${esc(x.hint)}</small></td><td>${esc(x.duration)}</td><td>${fmt(x.expiresAt)}</td><td><span class="pill ${x.status==="ACTIVE"?"":x.status==="SUSPENDED"?"off":"warn"}">${x.status}</span></td><td>${x.deviceBound?"BOUND":"—"}</td><td><div class="row"><button class="btn secondary small" onclick="toggleLicense(${x.id},'${x.status==="SUSPENDED"?"ACTIVE":"SUSPENDED"}')">${x.status==="SUSPENDED"?"เปิดใช้":"ระงับ"}</button><button class="btn secondary small" onclick="resetDevice(${x.id})">รีเซ็ตอุปกรณ์</button></div></td></tr>`).join("")||"<tr><td colspan=6>ไม่พบ License</td></tr>"}
-async function createLicense(){try{const d=await api("/api/admin/licenses",{method:"POST",body:JSON.stringify({duration:document.getElementById("duration").value})});const [data,audit]=await Promise.all([api("/api/admin/licenses"),api("/api/admin/audit")]);renderAdmin(data.licenses,audit.events);document.getElementById("createdKey").innerHTML=`<div class="notice success">สร้างคีย์สำเร็จ — แสดงครั้งนี้เท่านั้น กรุณาคัดลอกเก็บไว้<br><b>${esc(d.key)}</b><br><button class="btn secondary small" onclick="copyText('${d.key}')">COPY KEY</button></div>`}catch(e){alert(e.message)}}
-async function searchLicenses(){try{const d=await api("/api/admin/licenses?q="+encodeURIComponent(document.getElementById("searchKey").value));document.getElementById("licenseRows").innerHTML=licenseRows(d.licenses)}catch(e){}}
-async function toggleLicense(id,status){try{await api(`/api/admin/licenses/${id}/status`,{method:"POST",body:JSON.stringify({status})});adminDashboard()}catch(e){alert(e.message)}}
-async function resetDevice(id){const password=prompt("ยืนยันตัวตน: กรอกรหัสผ่าน Admin ปัจจุบัน");if(!password)return;try{await api(`/api/admin/licenses/${id}/reset-device`,{method:"POST",body:JSON.stringify({password})});alert("รีเซ็ตการผูกอุปกรณ์แล้ว");adminDashboard()}catch(e){alert(e.message)}}
-async function adminLogout(){try{await api("/api/admin/logout",{method:"POST"})}finally{home()}}
-function customerLogin(){app.innerHTML=`<section class="card formcard"><button class="back" onclick="home()">← กลับหน้าหลัก</button><h2 style="margin-top:22px">CUSTOMER ACCESS</h2><p class="muted">กรอก License Key เพื่อเปิดใช้งาน Scanner บนอุปกรณ์นี้</p><form id="activateForm"><label class="field"><span>LICENSE KEY</span><input id="licenseKey" placeholder="FFSC-XXXXXX-XXXXXX-XXXXXX" autocapitalize="characters" required></label><button class="btn full">ACTIVATE KEY</button></form><div id="msg"></div><div class="notice">การเปิดใช้งานครั้งแรกจะผูกคีย์กับเบราว์เซอร์นี้ โปรดใช้ Chrome บนอุปกรณ์เดิม</div></section>`;
-document.getElementById("activateForm").onsubmit=async e=>{e.preventDefault();try{const deviceId=getDeviceId();await api("/api/customer/activate",{method:"POST",body:JSON.stringify({key:document.getElementById("licenseKey").value,deviceId})});scanner()}catch(err){document.getElementById("msg").innerHTML=showError(err)}}}
-function getDeviceId(){let id=localStorage.getItem("ffsc-device-id");if(!id){id=crypto.randomUUID();localStorage.setItem("ffsc-device-id",id)}return id}
-async function scanner(){try{const session=await api("/api/customer/session");renderScanner(session)}catch(e){customerLogin()}}
-function renderScanner(session){app.innerHTML=`<div class="dashboard-head"><div><div class="eyebrow">CUSTOMER SCANNER</div><h1>Security Overview</h1><div class="muted">License: ${esc(session.duration)} • หมดอายุ: ${fmt(session.expiresAt)}</div></div><button class="btn secondary small" onclick="customerLogout()">LOG OUT</button></div>
-<div class="scanner-hero"><div class="iconbox" style="margin:auto">⬡</div><h2>ANDROID SECURITY CHECKER</h2><p class="muted">การตรวจสอบเบื้องต้นตามสิทธิ์ที่ Browser อนุญาต</p><button class="btn scan-button" onclick="startScan()">▶ START SCAN</button><div id="scanStatus" class="muted">ยังไม่ได้เริ่มการตรวจสอบ</div></div>
-<div class="row between"><h2>Security Checks</h2><span class="muted">10 CHECKS</span></div><div class="checks">${checks.map((c,i)=>`<button class="check unknown" onclick="showCheck(${i})"><strong>${esc(c[0])}</strong><span>${c[2]}</span></button>`).join("")}</div>
-<section class="filebox"><h3>SELECT FILE TO SCAN</h3><p class="muted">เลือกไฟล์จากอุปกรณ์เพื่ออ่านข้อมูลและคำนวณ SHA-256 ในเบราว์เซอร์ ไฟล์จะไม่ถูกอัปโหลด</p><input id="fileInput" type="file" class="hidden" accept="*/*"><button class="btn secondary" onclick="document.getElementById('fileInput').click()">BROWSE FILE</button><div id="fileInfo" class="filemeta detail">ยังไม่ได้เลือกไฟล์</div></section>
-<div class="notice">ข้อจำกัด: เว็บไม่สามารถเข้าถึงไฟล์หรือข้อมูลระบบทั้งหมดของ Android ได้ ผล SAFE CHECK หมายถึงตรวจเบื้องต้นในขอบเขตที่เข้าถึงได้เท่านั้น ไม่ใช่ผลรับรองว่าไม่มีมัลแวร์</div>
-<div id="modalRoot"></div>`;
-document.getElementById("fileInput").addEventListener("change",handleFile)}
-async function startScan(){const el=document.getElementById("scanStatus");el.textContent="กำลังตรวจสอบความสามารถของ Browser...";await new Promise(r=>setTimeout(r,350));el.textContent="ตรวจสอบเบื้องต้นแล้ว — รายการที่ Browser เข้าถึงไม่ได้จะแสดง NOT AVAILABLE หรือ UNKNOWN";document.querySelectorAll(".check").forEach((node,i)=>{node.classList.add("unknown");node.querySelector("span").textContent=checks[i][2]})}
-function showCheck(i){const c=checks[i];document.getElementById("modalRoot").innerHTML=`<div class="modal" onclick="if(event.target===this)this.innerHTML=''"><section class="card"><div class="row between"><h2>${esc(c[0])}</h2><button class="back" onclick="document.getElementById('modalRoot').innerHTML=''">ปิด ✕</button></div><span class="pill warn">${c[2]}</span><h3 style="font-size:13px;margin-top:20px">ตรวจอะไร</h3><p class="muted">${esc(c[1])}</p><h3 style="font-size:13px">ผลการตรวจ</h3><p class="muted">${c[2]==="NOT AVAILABLE"?"Browser ไม่มี API ที่จำเป็นสำหรับการตรวจรายการนี้":"ยังไม่มีข้อมูลเพียงพอที่จะสรุปผลการตรวจ"}</p><h3 style="font-size:13px">ข้อจำกัด</h3><p class="muted">การตรวจผ่านเว็บมีขอบเขตจำกัด ไม่สามารถแทนที่แอปตรวจสอบความปลอดภัยที่ทำงานบน Android โดยตรงได้</p></section></div>`}
-async function handleFile(e){const f=e.target.files[0];if(!f)return;const out=document.getElementById("fileInfo");out.textContent="กำลังอ่านไฟล์และคำนวณ SHA-256...";try{if(!crypto.subtle)throw Error("เบราว์เซอร์ไม่รองรับ Web Crypto API หรือไม่ได้ใช้งานผ่าน HTTPS");const buffer=await f.arrayBuffer();const digest=await crypto.subtle.digest("SHA-256",buffer);const hash=[...new Uint8Array(digest)].map(x=>x.toString(16).padStart(2,"0")).join("");out.innerHTML=`<div class="notice success"><b>FILE READ SUCCESSFULLY</b><br>ชื่อไฟล์: ${esc(f.name)}<br>ขนาด: ${esc(formatBytes(f.size))}<br>ประเภท: ${esc(f.type||"ไม่ระบุ MIME type")}<br>SHA-256:<br><code>${hash}</code><br><small>คำนวณจากไฟล์ที่เลือกในเครื่อง ไม่ได้อัปโหลดขึ้นเซิร์ฟเวอร์</small></div>`}catch(err){out.innerHTML=`<div class="notice error">${esc(err.message)}</div>`}}
-function formatBytes(n){if(n===0)return"0 Bytes";const u=["Bytes","KB","MB","GB"];const i=Math.floor(Math.log(n)/Math.log(1024));return (n/Math.pow(1024,i)).toFixed(2)+" "+u[i]}
-async function customerLogout(){try{await api("/api/customer/logout",{method:"POST"})}finally{home()}}
-function copyText(s){navigator.clipboard?.writeText(s).then(()=>alert("คัดลอกแล้ว")).catch(()=>alert("ไม่สามารถคัดลอกได้"))}
-(async()=>{try{const a=await api("/api/admin/me");if(a.mustChange)return changePassword(true);return adminDashboard()}catch{}try{await api("/api/customer/session");return scanner()}catch{}home()})();
-                                                                                  
+
+function $(id) {
+  return document.getElementById(id);
+}
+
+function getDeviceId() {
+  let id = localStorage.getItem(DEVICE_STORAGE_KEY);
+
+  if (!id) {
+    id = crypto.randomUUID
+      ? crypto.randomUUID()
+      : "ffsc-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+
+    localStorage.setItem(DEVICE_STORAGE_KEY, id);
+  }
+
+  return id;
+}
+
+async function api(url, options = {}) {
+  const config = {
+    method: options.method || "GET",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
+  };
+
+  if (options.body !== undefined) {
+    config.body = JSON.stringify(options.body);
+  }
+
+  let response;
+
+  try {
+    response = await fetch(url, config);
+  } catch {
+    throw new Error("ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่");
+  }
+
+  let data = {};
+
+  try {
+    data = await response.json();
+  } catch {
+    data = {};
+  }
+
+  if (!response.ok) {
+    throw new Error(data.error || data.message || `เกิดข้อผิดพลาด (${response.status})`);
+  }
+
+  return data;
+}
+
+function notify(message, type = "info") {
+  const old = $("toast");
+  if (old) old.remove();
+
+  const toast = document.createElement("div");
+  toast.id = "toast";
+  toast.className = "ff-toast " + type;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  setTimeout(() => toast.remove(), 3500);
+}
+
+function setLoading(button, loading, text = "กำลังดำเนินการ...") {
+  if (!button) return;
+
+  if (loading) {
+    button.dataset.originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = text;
+  } else {
+    button.disabled = false;
+    button.textContent = button.dataset.originalText || button.textContent;
+  }
+}
+
+function formatDate(value) {
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  return date.toLocaleString("th-TH", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  });
+}
+
+function durationLabel(value) {
+  const found = durations.find(item => item.value === value);
+  return found ? found.label : (value || "ไม่ระบุ");
+}
+
+function expiryLabel(row) {
+  if (!row) return "—";
+
+  if (row.expiresAt) {
+    return formatDate(row.expiresAt);
+  }
+
+  if (row.activatedAt) {
+    return row.duration === "lifetime" ? "ตลอดชีพ" : "ไม่พบวันหมดอายุ";
+  }
+
+  return row.duration === "lifetime"
+    ? "ยังไม่เปิดใช้งาน"
+    : "ยังไม่เริ่มนับเวลา";
+}
+
+function statusLabel(status) {
+  const labels = {
+    ACTIVE: "ปกติ",
+    SUSPENDED: "ระงับ",
+    EXPIRED: "หมดอายุ"
+  };
+
+  return labels[status] || status || "ไม่ทราบสถานะ";
+}
+
+function statusClass(status) {
+  if (status === "ACTIVE") return "success";
+  if (status === "SUSPENDED") return "danger";
+  return "muted";
+}
+
+function normalizeKey(value) {
+  return String(value || "").trim().toUpperCase().replace(/\s+/g, "");
+}
+
+function addStyles() {
+  if ($("ffsc-styles")) return;
+
+  const style = document.createElement("style");
+  style.id = "ffsc-styles";
+
+  style.textContent = `
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #fff7fb;
+      color: #29232a;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+
+    button, input, select { font: inherit; }
+
+    .ff-wrap {
+      width: min(960px, 100%);
+      margin: 0 auto;
+      padding: 18px 14px 45px;
+    }
+
+    .ff-header {
+      text-align: center;
+      padding: 22px 12px;
+    }
+
+    .ff-logo {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 62px;
+      height: 62px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, #ff75b5, #e83c91);
+      color: white;
+      font-size: 27px;
+      font-weight: 900;
+      box-shadow: 0 8px 24px #e83c9130;
+    }
+
+    .ff-header h1 {
+      margin: 12px 0 5px;
+      font-size: clamp(24px, 5vw, 32px);
+      color: #d92f83;
+    }
+
+    .ff-header p {
+      color: #806b78;
+      margin: 0;
+      font-size: 14px;
+    }
+
+    .ff-card {
+      background: white;
+      border: 1px solid #f4d9e7;
+      border-radius: 20px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 8px 28px #8f41600b;
+    }
+
+    .ff-customer {
+      border: 2px solid #f3a6cb;
+      box-shadow: 0 12px 32px #df4e9217;
+    }
+
+    .ff-customer-title {
+      color: #d92f83;
+      font-size: 21px;
+      font-weight: 800;
+      margin: 0 0 6px;
+    }
+
+    .ff-subtitle {
+      color: #806b78;
+      font-size: 13px;
+      margin: 0 0 18px;
+      line-height: 1.6;
+    }
+
+    .ff-label {
+      display: block;
+      font-size: 14px;
+      font-weight: 700;
+      margin: 13px 0 7px;
+    }
+
+    .ff-input, .ff-select {
+      width: 100%;
+      border: 1px solid #e5d5de;
+      border-radius: 12px;
+      background: #fff;
+      padding: 13px 14px;
+      outline: none;
+      min-height: 48px;
+      color: #29232a;
+    }
+
+    .ff-input:focus, .ff-select:focus {
+      border-color: #e83c91;
+      box-shadow: 0 0 0 3px #e83c9118;
+    }
+
+    .ff-btn {
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      gap: 7px;
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 16px;
+      min-height: 46px;
+      font-weight: 750;
+      cursor: pointer;
+      text-decoration: none;
+      transition: .15s;
+    }
+
+    .ff-btn:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+    }
+
+    .ff-btn-primary {
+      color: white;
+      background: linear-gradient(135deg, #f36eaa, #d92f83);
+    }
+
+    .ff-btn-primary:active { transform: scale(.98); }
+
+    .ff-btn-secondary {
+      background: #fff0f7;
+      color: #c72b78;
+      border: 1px solid #f4c4dc;
+    }
+
+    .ff-btn-neutral {
+      background: #f0eef0;
+      color: #514951;
+    }
+
+    .ff-btn-danger {
+      background: #fff0f0;
+      color: #c43d3d;
+    }
+
+    .ff-btn-block { width: 100%; }
+
+    .ff-button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px;
+      margin-top: 14px;
+    }
+
+    .ff-button-row > * { flex: 1; }
+
+    .ff-notice {
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: #fff5fa;
+      border: 1px solid #f4d5e5;
+      color: #78556a;
+      font-size: 13px;
+      line-height: 1.65;
+      margin-top: 14px;
+    }
+
+    .ff-notice.warning {
+      background: #fff9e9;
+      border-color: #f3e0a8;
+      color: #795b16;
+    }
+
+    .ff-notice.success {
+      background: #effaf3;
+      border-color: #ccebd6;
+      color: #28623b;
+    }
+
+    .ff-divider {
+      height: 1px;
+      background: #eee8ec;
+      margin: 20px 0;
+    }
+
+    .ff-admin {
+      border: 1px solid #e7e3e7;
+      background: #faf9fa;
+      box-shadow: none;
+    }
+
+    .ff-admin h2 {
+      color: #625a63;
+      font-size: 17px;
+      margin: 0 0 6px;
+    }
+
+    .ff-small {
+      color: #857b85;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .ff-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .ff-section-title {
+      font-size: 18px;
+      font-weight: 800;
+      margin: 0 0 14px;
+    }
+
+    .ff-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+      gap: 10px;
+    }
+
+    .ff-stat {
+      border-radius: 13px;
+      background: #faf5f8;
+      padding: 13px;
+      border: 1px solid #f0e5eb;
+    }
+
+    .ff-stat strong {
+      display: block;
+      font-size: 21px;
+      margin-top: 5px;
+    }
+
+    .ff-table-wrap {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    .ff-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      min-width: 570px;
+    }
+
+    .ff-table th, .ff-table td {
+      padding: 11px 9px;
+      border-bottom: 1px solid #eee8ec;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    .ff-table th {
+      color: #796d77;
+      background: #faf7f9;
+    }
+
+    .ff-badge {
+      display: inline-block;
+      padding: 4px 9px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 800;
+      background: #f0eef0;
+      color: #625a63;
+    }
+
+    .ff-badge.success { background: #e8f8ed; color: #24723e; }
+    .ff-badge.danger { background: #ffeded; color: #bd3434; }
+    .ff-badge.muted { background: #f0eef0; color: #625a63; }
+
+    .ff-key {
+      overflow-wrap: anywhere;
+      font-weight: 800;
+      letter-spacing: .5px;
+      color: #c52b79;
+      font-size: 18px;
+    }
+
+    .ff-toast {
+      position: fixed;
+      z-index: 9999;
+      left: 50%;
+      bottom: 22px;
+      transform: translateX(-50%);
+      width: max-content;
+      max-width: calc(100% - 28px);
+      padding: 12px 17px;
+      border-radius: 12px;
+      color: white;
+      background: #514751;
+      box-shadow: 0 8px 25px #0002;
+      font-size: 14px;
+    }
+
+    .ff-toast.success { background: #267b48; }
+    .ff-toast.error { background: #b83d48; }
+
+    .ff-check-item {
+      display: flex;
+      gap: 10px;
+      padding: 12px 0;
+      border-bottom: 1px solid #f0e9ed;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .ff-check-icon { color: #d92f83; font-weight: 900; }
+
+    .ff-footer {
+      text-align: center;
+      color: #a0929c;
+      font-size: 11px;
+      padding: 12px;
+    }
+
+    @media (max-width: 520px) {
+      .ff-card { padding: 16px; border-radius: 16px; }
+      .ff-button-row { flex-direction: column; }
+      .ff-button-row > * { width: 100%; }
+    }
+  `;
+
+  document.head.appendChild(style);
+}
+
+function render(content) {
+  app.innerHTML = `
+    <main class="ff-wrap">
+      <header class="ff-header">
+        <div class="ff-logo">FF</div>
+        <h1>FF SCAN CENTER</h1>
+        <p>ระบบตรวจสอบและจัดการสิทธิ์การใช้งาน</p>
+      </header>
+      ${content}
+      <footer class="ff-footer">FF SCAN CENTER</footer>
+    </main>
+  `;
+}
+
+/* =========================
+   HOME
+   ========================= */
+
+function home() {
+  currentPage = "home";
+  checkedLicense = null;
+
+  render(`
+    <section class="ff-card ff-customer">
+      <h2 class="ff-customer-title">สำหรับลูกค้า</h2>
+      <p class="ff-subtitle">
+        กรอก License Key เพื่อตรวจสอบสิทธิ์ก่อนเปิดใช้งาน
+      </p>
+
+      <label class="ff-label" for="customer-key">License Key</label>
+      <input
+        id="customer-key"
+        class="ff-input"
+        type="text"
+        placeholder="กรอกคีย์ของคุณ"
+        autocomplete="off"
+        autocapitalize="characters"
+      >
+
+      <div class="ff-button-row">
+        <button class="ff-btn ff-btn-primary ff-btn-block" id="check-key-btn">
+          ตรวจสอบคีย์
+        </button>
+      </div>
+
+      <div class="ff-button-row">
+        <button class="ff-btn ff-btn-secondary ff-btn-block" id="seller-btn">
+          ซื้อคีย์กับผู้ขาย
+        </button>
+      </div>
+
+      <div class="ff-notice">
+        <strong>หมายเหตุ:</strong>
+        การตรวจสอบคีย์ยังไม่เริ่มนับเวลา
+        ระบบจะเริ่มนับเวลาเมื่อคุณกดยืนยันเปิดใช้งานเท่านั้น
+      </div>
+    </section>
+
+    <section class="ff-card ff-admin">
+      <h2>ผู้ดูแลระบบ</h2>
+      <p class="ff-small">ส่วนจัดการระบบสำหรับผู้ดูแลเท่านั้น</p>
+      <button class="ff-btn ff-btn-neutral" id="admin-login-open">
+        เข้าสู่ระบบผู้ดูแล
+      </button>
+    </section>
+  `);
+
+  $("check-key-btn").onclick = checkCustomerKey;
+
+  $("customer-key").addEventListener("keydown", event => {
+    if (event.key === "Enter") checkCustomerKey();
+  });
+
+  $("seller-btn").onclick = () => {
+    if (SELLER_URL) {
+      window.open(SELLER_URL, "_blank", "noopener,noreferrer");
+    } else {
+      notify("ยังไม่ได้ตั้งค่าลิงก์ผู้ขาย", "info");
+    }
+  };
+
+  $("admin-login-open").onclick = adminLoginPage;
+}
+
+/* =========================
+   CUSTOMER: CHECK KEY
+   ========================= */
+
+async function checkCustomerKey() {
+  const input = $("customer-key");
+  const button = $("check-key-btn");
+
+  const key = normalizeKey(input?.value);
+
+  if (!key) {
+    notify("กรุณากรอก License Key", "error");
+    input?.focus();
+    return;
+  }
+
+  setLoading(button, true, "กำลังตรวจสอบ...");
+
+  try {
+    const result = await api("/api/customer/check-key", {
+      method: "POST",
+      body: {
+        key,
+        deviceId: getDeviceId()
+      }
+    });
+
+    checkedLicense = {
+      key,
+      duration: result.duration,
+      expiresAt: result.expiresAt || null,
+      activatedAt: result.activatedAt || null,
+      activated: Boolean(result.activated || result.activatedAt || result.expiresAt)
+    };
+
+    customerKey = key;
+    customerConfirmPage(result);
+  } catch (error) {
+    notify(error.message || "ตรวจสอบคีย์ไม่สำเร็จ", "error");
+    setLoading(button, false);
+  }
+}
+
+/* =========================
+   CUSTOMER: CONFIRM PAGE
+   ========================= */
+
+function customerConfirmPage(result) {
+  currentPage = "customer-confirm";
+
+  const activated = Boolean(
+    result.activated || result.activatedAt || result.expiresAt
+  );
+
+  const expiryText = result.expiresAt
+    ? formatDate(result.expiresAt)
+    : (result.duration === "lifetime" ? "ตลอดชีพ" : "ยังไม่เริ่มนับเวลา");
+
+  render(`
+    <section class="ff-card ff-customer">
+      <h2 class="ff-customer-title">ตรวจสอบคีย์สำเร็จ</h2>
+      <p class="ff-subtitle">กรุณาตรวจสอบรายละเอียดก่อนดำเนินการต่อ</p>
+
+      <div class="ff-notice success">
+        ระบบตรวจพบ License Key และสามารถอ่านข้อมูลสิทธิ์ได้
+      </div>
+
+      <div class="ff-divider"></div>
+
+      <div class="ff-row">
+        <span class="ff-small">ระยะเวลาคีย์</span>
+        <strong>${escapeHTML(durationLabel(result.duration))}</strong>
+      </div>
+
+      <div class="ff-divider"></div>
+
+      <div class="ff-row">
+        <span class="ff-small">วันหมดอายุ</span>
+        <strong>${escapeHTML(expiryText)}</strong>
+      </div>
+
+      <div class="ff-divider"></div>
+
+      ${
+        activated
+          ? `
+            <div class="ff-notice warning">
+              <strong>คีย์นี้เคยเปิดใช้งานแล้ว</strong><br>
+              การเปิดใช้งานซ้ำจะไม่เริ่มนับเวลาใหม่
+              และระบบจะยึดวันหมดอายุเดิม
+            </div>
+          `
+          : `
+            <div class="ff-notice">
+              <strong>คีย์นี้ยังไม่เริ่มนับเวลา</strong><br>
+              เวลาจะเริ่มนับเมื่อคุณกดปุ่มยืนยันเปิดใช้งานด้านล่าง
+              การตรวจสอบในขั้นตอนนี้ไม่ได้เริ่มนับเวลา
+            </div>
+          `
+      }
+
+      <div class="ff-button-row">
+        <button class="ff-btn ff-btn-primary ff-btn-block" id="confirm-activate-btn">
+          ยืนยันเปิดใช้งาน
+        </button>
+        <button class="ff-btn ff-btn-neutral ff-btn-block" id="cancel-activate-btn">
+          ยกเลิก
+        </button>
+      </div>
+    </section>
+  `);
+
+  $("confirm-activate-btn").onclick = confirmCustomerActivation;
+  $("cancel-activate-btn").onclick = home;
+}
+
+/* =========================
+   CUSTOMER: ACTIVATE
+   ========================= */
+
+async function confirmCustomerActivation() {
+  if (!checkedLicense?.key) {
+    notify("ไม่พบข้อมูลคีย์ กรุณาตรวจสอบใหม่", "error");
+    home();
+    return;
+  }
+
+  const button = $("confirm-activate-btn");
+  setLoading(button, true, "กำลังเปิดใช้งาน...");
+
+  try {
+    await api("/api/customer/activate", {
+      method: "POST",
+      body: {
+        key: checkedLicense.key,
+        deviceId: getDeviceId()
+      }
+    });
+
+    checkedLicense = null;
+    customerKey = "";
+
+    notify("เปิดใช้งานสำเร็จ", "success");
+    await scannerPage();
+  } catch (error) {
+    notify(error.message || "เปิดใช้งานไม่สำเร็จ", "error");
+    setLoading(button, false);
+  }
+}
+
+/* =========================
+   CUSTOMER: SCANNER
+   ========================= */
+
+async function scannerPage() {
+  currentPage = "scanner";
+
+  let session;
+
+  try {
+    session = await api("/api/customer/session");
+  } catch {
+    home();
+    notify("กรุณาตรวจสอบและเปิดใช้งานคีย์ก่อน", "error");
+    return;
+  }
+
+  render(`
+    <section class="ff-card ff-customer">
+      <div class="ff-row">
+        <h2 class="ff-customer-title">ศูนย์ตรวจสอบ</h2>
+        <span class="ff-badge success">เข้าสู่ระบบแล้ว</span>
+      </div>
+
+      <p class="ff-subtitle">
+        ตรวจสอบข้อมูลที่คุณเลือกและแสดงผลเบื้องต้นบนอุปกรณ์นี้
+      </p>
+
+      <div class="ff-grid">
+        <div class="ff-stat">
+          <span class="ff-small">ระยะเวลาคีย์</span>
+          <strong>${escapeHTML(durationLabel(session.duration))}</strong>
+        </div>
+
+        <div class="ff-stat">
+          <span class="ff-small">วันหมดอายุ</span>
+          <strong style="font-size:14px">
+            ${escapeHTML(session.expiresAt ? formatDate(session.expiresAt) : "ตลอดชีพ")}
+          </strong>
+        </div>
+      </div>
+
+      <div class="ff-divider"></div>
+
+      <h3 class="ff-section-title">รายการตรวจสอบ</h3>
+
+      <div class="ff-check-item">
+        <span class="ff-check-icon">✓</span>
+        <span>ตรวจสอบไฟล์ที่ผู้ใช้เลือกและคำนวณค่า SHA-256</span>
+      </div>
+
+      <div class="ff-check-item">
+        <span class="ff-check-icon">✓</span>
+        <span>แสดงข้อมูลพื้นฐานของไฟล์ที่เลือก</span>
+      </div>
+
+      <div class="ff-check-item">
+        <span class="ff-check-icon">✓</span>
+        <span>แสดงข้อควรระวังเกี่ยวกับความปลอดภัยของอุปกรณ์</span>
+      </div>
+
+      <div class="ff-notice warning">
+        <strong>ข้อจำกัดที่ควรทราบ</strong><br>
+        เว็บนี้ไม่สามารถตรวจ Root, VPN, Shizuku,
+        แอปที่ติดตั้งทั้งหมด, สิทธิ์ของแอปอื่น
+        หรือไฟล์ส่วนตัวภายในเกมได้โดยตรง
+        และการคำนวณ SHA-256 ไม่ใช่การตรวจจับมัลแวร์
+      </div>
+
+      <div class="ff-button-row">
+        <button class="ff-btn ff-btn-primary ff-btn-block" id="select-file-btn">
+          เลือกไฟล์เพื่อตรวจสอบ
+        </button>
+        <button class="ff-btn ff-btn-secondary ff-btn-block" id="run-info-btn">
+          ดูรายการตรวจสอบ
+        </button>
+      </div>
+
+      <input type="file" id="file-input" hidden>
+
+      <div id="file-result"></div>
+      <div id="scan-result"></div>
+
+      <div class="ff-divider"></div>
+
+      <button class="ff-btn ff-btn-neutral ff-btn-block" id="customer-logout-btn">
+        ออกจากระบบลูกค้า
+      </button>
+    </section>
+  `);
+
+  $("select-file-btn").onclick = () => $("file-input").click();
+  $("file-input").onchange = handleFile;
+  $("run-info-btn").onclick = showCheck;
+  $("customer-logout-btn").onclick = customerLogout;
+}
+
+/* =========================
+   FILE CHECK
+   ========================= */
+
+async function handleFile(event) {
+  const file = event.target.files?.[0];
+  const resultBox = $("file-result");
+
+  if (!file || !resultBox) return;
+
+  resultBox.innerHTML = `
+    <div class="ff-notice">กำลังอ่านข้อมูลไฟล์...</div>
+  `;
+
+  try {
+    const buffer = await file.arrayBuffer();
+    const digest = await crypto.subtle.digest("SHA-256", buffer);
+
+    const hash = Array.from(new Uint8Array(digest))
+      .map(byte => byte.toString(16).padStart(2, "0"))
+      .join("");
+
+    resultBox.innerHTML = `
+      <div class="ff-card" style="margin-top:16px">
+        <h3 class="ff-section-title">ผลการอ่านไฟล์</h3>
+
+        <div class="ff-small">ชื่
