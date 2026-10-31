@@ -785,7 +785,38 @@ app.post("/api/customer/logout", (req, res) => {
 // STATIC FILES
 // -------------------------
 
-app.use(express.static(__dirname));
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+
+app.get("/app.js", (req, res) => {
+  res.sendFile(path.join(__dirname, "app.js"));
+});
+
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+
+// -------------------------
+// ERROR HANDLER
+// -------------------------
+
+app.use((err, req, res, next) => {
+  console.error(err);
+
+  if (res.headersSent) {
+    return next(err);
+  }
+
+  res.status(500).json({
+    error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์"
+  });
+});
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`FF SCAN CENTER running on port ${PORT}`);
+});
+
 
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
