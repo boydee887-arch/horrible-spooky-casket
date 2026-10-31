@@ -2,10 +2,14 @@
   "name": "ff-scan-center",
   "version": "1.0.0",
   "private": true,
-  "description": "FF SCAN CENTER - Android file security checker with separated admin/customer access",
-  "main": "server.js",
-  "scripts": {"start": "node server.js", "dev": "node --watch server.js"},
-  "engines": {"node": ">=20"},
+  "description": "FF SCAN CENTER",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.8.1",
